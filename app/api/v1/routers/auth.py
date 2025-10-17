@@ -1,5 +1,6 @@
 # app/api/v1/routers/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm.session import Session
 from supabase import create_client, Client, PostgrestAPIResponse
@@ -14,7 +15,6 @@ from datetime import datetime, timezone
 
 
 router = APIRouter()
-
 
 class UserSignup(BaseModel):
     email: EmailStr
@@ -135,3 +135,39 @@ def complete_invited_user_setup(
     db.commit()
 
     return {"message": "Account setup complete. You can now log in."}
+
+
+@router.post("/token")
+def login_for_access_token(
+        form_data: OAuth2PasswordRequestForm = Depends(),
+        supabase: Client = Depends(get_supabase_client)
+):
+    """
+    Standard OAuth2 password flow. Takes email and password and returns a JWT.
+    This is the primary endpoint for logging in.
+    """
+    try:
+        # Supabase's sign_in_with_password handles the authentication
+        response = supabase.auth.sign_in_with_password({
+            "email": form_data.username,  # OAuth2 spec uses 'username' for the ID field
+            "password": form_data.password
+        })
+
+        if not response.session or not response.session.access_token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Login failed. Unexpected response from auth provider."
+            )
+
+        return {
+            "access_token": response.session.access_token,
+            "token_type": "bearer"
+        }
+    except Exception as e:
+        # Catch specific API errors from Supabase, e.g., "Invalid login credentials"
+        error_message = str(e)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=error_message or "Invalid email or password.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )

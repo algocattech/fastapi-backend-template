@@ -75,6 +75,7 @@ def create_tenant_with_admin_user(
         tenant_id=new_tenant.id,
         role_id=admin_role.id,
         created_by=new_auth_user.id,
+        updated_by=new_auth_user.id,
         terms_accepted_at=datetime.now(timezone.utc)
     )
     db.add(new_user_profile)
@@ -224,6 +225,7 @@ def create_tenant_for_new_user(db: Session, tenant_data: TenantOnboard, user: Au
         tenant_id=new_tenant.id,
         role_id=admin_role.id,
         created_by=user.id,
+        updated_by=user.id,
         terms_accepted_at=datetime.now(timezone.utc)
     )
     db.add(new_user_profile)
