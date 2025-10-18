@@ -45,20 +45,28 @@ async def handle_dodo_webhook(
 
     # 2. Idempotency Check: Has this event already been processed?
     event_id = headers.webhook_id
-    if db.query(WebhookEvent).filter(WebhookEvent.id == event_id).first():
-        print(f"INFO: Received duplicate webhook event (id: {event_id}). Acknowledging and skipping.")
-        return {"status": "duplicate", "message": "Event already processed."}
-
-    # Store the event immediately to prevent race conditions.
-    # We commit this in a separate transaction.
-    new_event = WebhookEvent(id=event_id, event_type=payload.get("type"), payload=payload)
-    db.add(new_event)
-    db.commit()
+    event_type = payload.get("type")
+    event_to_process = db.query(WebhookEvent).filter(WebhookEvent.id == event_id).first()
+    if event_to_process:
+        # Event record already exists.
+        if event_to_process.processed_successfully:
+            # If it was already processed successfully, this is a true duplicate.
+            print(f"INFO: Received and skipped already processed Stripe webhook (id: {event_id}).")
+            return {"status": "duplicate", "message": "Event already processed successfully."}
+        else:
+            # If it exists but was not processed successfully, this is a retry of a failed event.
+            # We will re-process it.
+            print(f"INFO: Retrying previously failed Stripe webhook (id: {event_id}).")
+    else:
+        # This is a brand new event.
+        event_to_process = WebhookEvent(id=event_id, event_type=event_type, payload=payload)
+        db.add(event_to_process)
+        # We flush here to ensure the record is in the session, but don't commit yet.
+        db.flush()
 
     # 3. Process the Event
     try:
         # Re-fetch the event to ensure we are working with a committed record
-        event_to_process = db.query(WebhookEvent).filter(WebhookEvent.id == event_id).first()
         process_event(db, event_to_process)
 
         # Mark as successfully processed and commit.
