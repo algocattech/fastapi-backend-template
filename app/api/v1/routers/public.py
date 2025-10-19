@@ -31,6 +31,8 @@ async def get_public_pricing_plans(db: Session = Depends(get_db)):  # <-- Make t
     # 4. Combine our DB data with the live Dodo data
     enriched_plans = []
     for db_plan, dodo_product in zip(db_plans, dodo_products_data):
+        # This automatically copies id, name, is_active, external_product_id, tokens_granted, etc.
+        plan_read_obj = PlanRead.model_validate(db_plan, from_attributes=True)
         price_info = None
         if dodo_product and dodo_product.get('price'):
             dodo_price = dodo_product['price']
@@ -45,17 +47,9 @@ async def get_public_pricing_plans(db: Session = Depends(get_db)):  # <-- Make t
                 interval=interval
             )
 
-        enriched_plans.append(
-            PlanRead(
-                id=db_plan.id,
-                created_at=db_plan.created_at,
-                updated_at=db_plan.updated_at,
-                name=db_plan.name,
-                entitlements=db_plan.entitlements,
-                description=dodo_product.get('description') if dodo_product else None,
-                image_url=dodo_product.get('image') if dodo_product else None,
-                price=price_info
-            )
-        )
+        plan_read_obj.description = dodo_product.get('description') if dodo_product else None
+        plan_read_obj.image_url = dodo_product.get('image') if dodo_product else None
+        plan_read_obj.price = price_info
+        enriched_plans.append(plan_read_obj)
 
     return enriched_plans
